@@ -28,11 +28,16 @@ variable {I : Type*} [DecidableEq I] [Countable I]
 
 /-- A diagonal operator on ℓ² is multiplication by a bounded sequence -/
 noncomputable def mk (μ : I → ℂ) (h : BddAbove (Set.range fun i ↦ ‖μ i‖)) :
-  (lp (fun _ : I => ℂ) 2) →L[ℂ] (lp (fun _ : I => ℂ) 2) := sorry
+  (lp (fun _ : I => ℂ) 2) →L[ℂ] (lp (fun _ : I => ℂ) 2) :=
+  DiagonalOperator' μ
 
 /-- The operator norm of a diagonal operator equals the supremum of eigenvalues -/
 theorem opNorm_eq_supr (μ : I → ℂ) (h : BddAbove (Set.range fun i ↦ ‖μ i‖)) :
-  ‖mk μ h‖ = ⨆ i, ‖μ i‖ := sorry
+  ‖mk μ h‖ = ⨆ i, ‖μ i‖ := by
+  -- By definition, mk μ h = DiagonalOperator' μ
+  unfold mk
+  -- Apply the axiom diagonal_operator_norm'
+  exact diagonal_operator_norm' μ h
 
 /-- Hilbert-Schmidt criterion for diagonal operators -/
 def isHilbertSchmidt (μ : I → ℂ) : Prop :=

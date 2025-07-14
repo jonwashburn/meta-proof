@@ -63,7 +63,26 @@ theorem eigenvalues_square_summable_gt_half {s : ℂ} (hs : 1/2 < s.re) :
     intro p
     rw [evolution_eigenvalues]
     -- |p^{-s}|² = p^{-2Re(s)}
-    sorry -- STANDARD: norm squared of complex power
+    -- Use the fact that for a positive real number a and complex number z, |a^z|² = a^(2*Re(z))
+    have hp_pos : 0 < (p.val : ℝ) := Nat.cast_pos.mpr (Nat.Prime.pos p.property)
+    -- For the squared norm, we use the fact that ‖z‖² = |z|²
+    rw [norm_sq_eq_def]
+    -- |p^{-s}| = p^{-Re(s)} for positive real p
+    have h_abs : Complex.abs ((p.val : ℂ)^(-s)) = (p.val : ℝ)^(-s.re) := by
+      rw [← ofReal_natCast]
+      exact Complex.abs_cpow_eq_rpow_re_of_pos hp_pos (-s)
+    rw [h_abs]
+    -- So |p^{-s}|² = (p^{-Re(s)})² = p^{-2*Re(s)}
+    -- Since (a^b)² = a^(2b) for positive a
+    rw [Real.rpow_natCast]
+    -- Now we have (p^{-Re(s)})² = p^{2*(-Re(s))} = p^{-2*Re(s)}
+    have : (p.val : ℝ)^(-s.re) ^ 2 = (p.val : ℝ)^(-2 * s.re) := by
+      rw [← Real.rpow_natCast]
+      simp only [Real.rpow_two]
+      rw [Real.rpow_mul (le_of_lt hp_pos)]
+      simp only [Nat.cast_ofNat]
+      ring
+    exact this
 
   -- Now show this sum converges
   simp_rw [h_eq]
@@ -113,7 +132,19 @@ theorem evolution_operator_norm_bound {s : ℂ} (hs : 0 < s.re) :
     intro p
     rw [evolution_eigenvalues]
     -- |p^{-s}| = p^{-Re(s)} ≤ 2^{-Re(s)} since p ≥ 2
-    sorry -- STANDARD: bound on norm of prime powers
+    -- Use the fact that |z^w| = |z|^Re(w) for z ≠ 0
+    have hp_ne_zero : (p.val : ℂ) ≠ 0 := by
+      norm_cast
+      exact Nat.Prime.ne_zero p.property
+    rw [Complex.norm_cpow_eq_rpow_re_of_pos (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
+    simp only [neg_re]
+    rw [Real.rpow_neg (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
+    -- Since p ≥ 2, we have (p.val : ℝ)^s.re ≥ 2^s.re
+    -- Therefore 1/(p.val : ℝ)^s.re ≤ 1/2^s.re = 2^(-s.re)
+    have hp_ge_two : 2 ≤ (p.val : ℝ) := Nat.cast_le.mpr (Nat.Prime.two_le p.property)
+    have h_rpow_le : 2^s.re ≤ (p.val : ℝ)^s.re := by
+      exact Real.rpow_le_rpow_left (le_of_lt hs) hp_ge_two s.re
+    exact inv_le_inv_of_le (Real.rpow_pos_of_pos (by norm_num) _) h_rpow_le
 
   -- Apply the diagonal operator norm characterization
   rw [evolution_operator_diagonal]
@@ -124,7 +155,29 @@ theorem evolution_operator_norm_bound {s : ℂ} (hs : 0 < s.re) :
   · exact Real.rpow_nonneg (by norm_num : (0 : ℝ) ≤ 2) _
   · intro ψ
     -- For diagonal operators, ‖Dψ‖ ≤ sup_p |eigenvalue_p| * ‖ψ‖
-    sorry -- This requires the specific implementation of DiagonalOperator'
+    -- Use the bound h_bound for each eigenvalue
+    have h_eigenvalue_bound : ∀ p : PrimeIndex, ‖(p.val : ℂ)^(-s) * ψ p‖ ≤ 2^(-s.re) * ‖ψ p‖ := by
+      intro p
+      rw [norm_mul]
+      exact mul_le_mul_of_nonneg_right (h_bound p) (norm_nonneg _)
+    -- For DiagonalOperator', the action is pointwise multiplication
+    -- so ‖DiagonalOperator' μ ψ‖ = ‖⟨μ i * ψ i⟩‖
+    -- By the definition of lp norm, this is (∑' i, |μ i * ψ i|²)^(1/2)
+    -- ≤ (∑' i, (sup |μ i|)² * |ψ i|²)^(1/2) = sup |μ i| * ‖ψ‖
+    calc ‖DiagonalOperator' (fun p => (p.val : ℂ)^(-s)) ψ‖
+      = ‖(⟨fun p => (p.val : ℂ)^(-s) * ψ p, by
+          -- We need to show this is in lp 2
+          have h_mem : Memℓp (fun p => (p.val : ℂ)^(-s) * ψ p) 2 := by
+            -- Since each eigenvalue is bounded and ψ ∈ lp 2, the product is in lp 2
+            have h_bounded_eigenvals : ∃ C, ∀ p, ‖(p.val : ℂ)^(-s)‖ ≤ C := by
+              use 2^(-s.re)
+              exact h_bound
+            exact Memℓp.const_mul h_bounded_eigenvals ψ.property
+          exact h_mem⟩ : lp (fun _ => ℂ) 2)‖ := by
+        rw [diagonal_operator_apply']
+      _ ≤ 2^(-s.re) * ‖ψ‖ := by
+        -- Use the bound for lp norms with pointwise multiplication
+        apply lp.norm_le_of_forall_le h_eigenvalue_bound
 
 /-- Continuity of eigenvalues in s -/
 theorem eigenvalues_continuous (p : PrimeIndex) :
@@ -157,7 +210,42 @@ theorem eigenvalues_holomorphic (p : PrimeIndex) :
   -- Since we're only asked for analyticity on {s | 0 < s.re}, we can use this subset
   intro s hs
   -- The function s ↦ (p.val : ℂ)^(-s) is entire (analytic everywhere)
-  sorry -- STANDARD: complex power function is entire when base is nonzero
+  -- For a fixed nonzero complex number a, the function z ↦ a^z is entire
+  -- This is because a^z = exp(z * log(a)) and both exp and log are well-defined
+  -- Since (p.val : ℂ) ≠ 0, we can apply this result to (p.val : ℂ)^(-s)
+  have hp_ne_zero : (p.val : ℂ) ≠ 0 := by
+    norm_cast
+    exact Nat.Prime.ne_zero p.property
+  -- The function s ↦ (p.val : ℂ)^(-s) is the composition of:
+  -- 1. s ↦ -s (which is entire)
+  -- 2. z ↦ (p.val : ℂ)^z (which is entire for nonzero base)
+  -- Therefore the composition is entire
+  -- Since we only need analyticity on {s | 0 < s.re}, which is a subset of ℂ,
+  -- we can use the fact that an entire function is analytic on any subset
+  apply AnalyticOn.analyticAt
+  -- For complex power functions with nonzero base, the function z ↦ a^z is entire
+  -- This follows from the definition a^z = exp(z * log(a))
+  -- Since exp is entire and log(a) is well-defined for a ≠ 0, the composition is entire
+  have h_analytic : AnalyticOn ℂ (fun z => (p.val : ℂ)^z) Set.univ := by
+    -- The function z ↦ a^z is entire for nonzero a
+    -- This is a standard result: since a^z = exp(z * log(a)) and both exp and multiplication
+    -- by the constant log(a) are entire, the composition is entire
+    apply AnalyticOn.cpow_const
+    exact hp_ne_zero
+  -- Now apply this to our function s ↦ (p.val : ℂ)^(-s)
+  -- This is the composition of the entire function z ↦ (p.val : ℂ)^z with s ↦ -s
+  have h_neg_analytic : AnalyticOn ℂ (fun s => -s) Set.univ := by
+    -- The function s ↦ -s is entire (it's linear)
+    apply AnalyticOn.neg
+    exact analyticOn_id
+  -- The composition of entire functions is entire
+  have h_comp : AnalyticOn ℂ (fun s => (p.val : ℂ)^(-s)) Set.univ := by
+    apply AnalyticOn.comp h_analytic h_neg_analytic
+    -- The image of the negation function is all of ℂ
+    intro s _
+    simp
+  -- Since the function is entire, it's analytic at any point s
+  exact h_comp.analyticAt (Set.mem_univ s)
 
 /- Commented out: These lemmas are not used in the main proof
 /-- The evolution operator varies continuously in s (in operator norm) -/
