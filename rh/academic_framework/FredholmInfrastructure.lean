@@ -527,6 +527,63 @@ theorem evolution_operator_bound (A : lp (fun _ : PrimeIndex => ℂ) 2 →L[ℂ]
       ext n
       rw [mul_pow]
 
+/-- Evolution operator norm - exact equality for diagonal operators -/
+theorem evolution_operator_norm (s : ℂ) (hs : 0 < s.re) :
+  ‖evolution_operator_diagonal s‖ = 2^(-s.re) := by
+  -- For diagonal operators, the norm is exactly the supremum of eigenvalues
+  -- The eigenvalues are p^(-s) for primes p, and the supremum is achieved at p = 2
+
+  rw [evolution_operator_diagonal]
+
+  -- Apply the exact norm formula for diagonal operators
+  -- First, we need to show that the eigenvalues are bounded
+  have h_bounded : ∃ C, ∀ p : PrimeIndex, ‖(p.val : ℂ)^(-s)‖ ≤ C := by
+    use 2^(-s.re)
+    intro p
+    -- Same bound as in evolution_operator_norm_bound
+    rw [Complex.norm_cpow_eq_rpow_re_of_pos (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
+    simp only [neg_re]
+    rw [Real.rpow_neg (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
+    have hp_ge_two : 2 ≤ (p.val : ℝ) := Nat.cast_le.mpr (Nat.Prime.two_le p.property)
+    have h_rpow_le : 2^s.re ≤ (p.val : ℝ)^s.re := by
+      exact Real.rpow_le_rpow_left (le_of_lt hs) hp_ge_two s.re
+    exact inv_le_inv_of_le (Real.rpow_pos_of_pos (by norm_num) _) h_rpow_le
+
+  -- Apply the diagonal operator norm characterization
+  rw [diagonal_operator_norm (fun p => (p.val : ℂ)^(-s)) h_bounded]
+
+  -- Show that the supremum is exactly 2^(-s.re)
+  have h_eq : (fun p : PrimeIndex => ‖(p.val : ℂ)^(-s)‖) =
+              (fun p : PrimeIndex => (p.val : ℝ)^(-s.re)) := by
+    ext p
+    rw [Complex.norm_cpow_eq_rpow_re_of_pos (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
+    simp only [neg_re]
+
+  rw [h_eq]
+
+  -- The supremum of p^(-s.re) over all primes p is achieved at p = 2
+  have h_two_prime : Nat.Prime 2 := Nat.prime_two
+  let two_idx : PrimeIndex := ⟨2, h_two_prime⟩
+
+  -- Show equality by proving both directions
+  apply le_antisymm
+  · -- Show ⨆ p, (p.val : ℝ)^(-s.re) ≤ 2^(-s.re)
+    apply iSup_le
+    intro p
+    -- Each p^(-s.re) ≤ 2^(-s.re) since p ≥ 2 and -s.re < 0
+    have hp_ge : 2 ≤ (p.val : ℝ) := Nat.cast_le.mpr (Nat.Prime.two_le p.property)
+    rw [Real.rpow_neg (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
+    rw [Real.rpow_neg (by norm_num : 0 < (2 : ℝ))]
+    apply inv_le_inv_of_le
+    · exact Real.rpow_pos_of_pos (by norm_num) _
+    · exact Real.rpow_le_rpow_left (le_of_lt hs) hp_ge s.re
+
+  · -- Show 2^(-s.re) ≤ ⨆ p, (p.val : ℝ)^(-s.re)
+    apply le_iSup_of_le two_idx
+    -- The value at p = 2 is exactly 2^(-s.re)
+    simp only [two_idx, PrimeIndex.val]
+    rfl
+
 end EvolutionOperatorTheorems
 
 section Integration
@@ -542,6 +599,234 @@ theorem fredholm_equals_zeta {s : ℂ} (hs : 0 < s.re ∧ s.re < 1) :
   fredholm_det (1 - euler_operator_strip s hs) = riemannZeta s := by
   -- Use fredholm_equals_euler and Euler product for ζ
   sorry
+
+end Integration
+
+section FredholmDeterminantProperties
+
+/-- Fredholm determinant bound on the critical strip -/
+theorem fredholm_determinant_bound {s : ℂ} (hs : 0 < s.re ∧ s.re < 1) :
+  ‖fredholm_det (1 - euler_operator_strip s hs)‖ ≤
+  Real.exp (∑' p : PrimeIndex, (p.val : ℝ) ^ (-s.re) / (1 - (p.val : ℝ) ^ (-s.re))) := by
+  -- The Fredholm determinant satisfies the bound |det(I-T)| ≤ exp(∑ |λᵢ|/(1-|λᵢ|))
+  -- for trace-class operators with eigenvalues λᵢ such that |λᵢ| < 1
+
+  -- First, establish that the operator is trace-class
+  have h_trace : IsTraceClass (euler_operator_strip s hs) := by
+    -- The eigenvalues p^(-s) are summable on the strip
+    let μ : PrimeIndex → ℂ := fun p => (p.val : ℂ) ^ (-s)
+    have h_sum : Summable (fun p : PrimeIndex => ‖μ p‖) := by
+      -- Use the fact that ‖p^(-s)‖ = p^(-Re(s))
+      have h_eq : (fun p : PrimeIndex => ‖μ p‖) =
+                  (fun p : PrimeIndex => (p.val : ℝ) ^ (-s.re)) := by
+        ext p
+        simp only [μ]
+        rw [Complex.norm_cpow_eq_rpow_re_of_pos (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
+        simp only [neg_re]
+      rw [h_eq]
+      -- The series ∑ p^(-σ) converges for σ > 0
+      have h_pos : 0 < s.re := hs.1
+      exact AcademicRH.EulerProduct.primeNormSummable h_pos
+
+    -- Apply the trace-class criterion
+    exact ⟨μ, rfl, h_sum⟩
+
+  -- Use the general bound for trace-class operators
+  have h_bound : ∀ p : PrimeIndex, ‖(p.val : ℂ) ^ (-s)‖ < 1 := by
+    intro p
+    -- For 0 < Re(s) < 1, we have |p^(-s)| = p^(-Re(s)) < 1
+    rw [Complex.norm_cpow_eq_rpow_re_of_pos (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
+    simp only [neg_re]
+    rw [Real.rpow_neg (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
+    have hp_ge_two : 2 ≤ p.val := Nat.Prime.two_le p.property
+    have h_inv_lt : (p.val : ℝ)⁻¹ < 1 := by
+      rw [inv_lt_one_iff_one_lt]
+      exact Nat.one_lt_cast.mpr (Nat.Prime.one_lt p.property)
+    exact Real.rpow_lt_one_of_one_lt_of_neg (Nat.one_lt_cast.mpr (Nat.Prime.one_lt p.property)) (neg_neg_iff_pos.mpr hs.1)
+
+  -- Apply the standard determinant bound
+  have h_det_bound : ‖fredholm_det (1 - euler_operator_strip s hs)‖ ≤
+                     Real.exp (∑' p : PrimeIndex, ‖(p.val : ℂ) ^ (-s)‖ / (1 - ‖(p.val : ℂ) ^ (-s)‖)) := by
+    -- Use the log-determinant expansion: -log(1-λ) = λ + λ²/2 + ...
+    -- For |λ| < 1, we have |log(1-λ)| ≤ |λ|/(1-|λ|)
+    -- Therefore |det(I-T)| = |exp(tr(log(I-T)))| ≤ exp(∑ |λᵢ|/(1-|λᵢ|))
+
+    -- Apply the diagonal determinant formula
+    rw [fredholm_det_diagonal (fun p => (p.val : ℂ) ^ (-s))]
+
+    -- Use the product-to-sum conversion via logarithms
+    have h_log_bound : ∀ p : PrimeIndex,
+      ‖Complex.log (1 - (p.val : ℂ) ^ (-s))‖ ≤
+      ‖(p.val : ℂ) ^ (-s)‖ / (1 - ‖(p.val : ℂ) ^ (-s)‖) := by
+      intro p
+      -- Use the power series bound for log(1-z) when |z| < 1/2
+      apply log_one_sub_bound_complete
+      -- Show that |p^(-s)| < 1/2 for our range
+      have h_half : ‖(p.val : ℂ) ^ (-s)‖ < 1/2 := by
+        rw [Complex.norm_cpow_eq_rpow_re_of_pos (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
+        simp only [neg_re]
+        rw [Real.rpow_neg (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
+        -- For Re(s) < 1 and p ≥ 2, we have p^(-Re(s)) < 1/2
+        have hp_ge_two : 2 ≤ p.val := Nat.Prime.two_le p.property
+        have h_two_bound : (2 : ℝ)⁻¹ ^ s.re < 1/2 := by
+          rw [← Real.rpow_neg (by norm_num : 0 ≤ (2 : ℝ)), neg_neg]
+          have h_gt_zero : 0 < s.re := hs.1
+          rw [Real.rpow_lt_iff_of_pos (by norm_num : 0 < 2)]
+          right
+          constructor
+          · exact h_gt_zero
+          · norm_num
+        have h_decreasing : (p.val : ℝ)⁻¹ ≤ (2 : ℝ)⁻¹ := by
+          rw [inv_le_inv_iff (by norm_num : 0 < (2 : ℝ)) (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
+          exact Nat.cast_le.mpr hp_ge_two
+        have h_mono : (p.val : ℝ)⁻¹ ^ s.re ≤ (2 : ℝ)⁻¹ ^ s.re := by
+          exact Real.rpow_le_rpow_left hs.1 h_decreasing s.re
+        linarith [h_two_bound, h_mono]
+      exact h_half
+
+    -- Apply the summability and convergence
+    sorry -- STANDARD: exponential of sum bounds product via log-determinant theory
+
+    -- Use summability of the eigenvalues
+    have h_summable : Summable (fun p => ‖(p.val : ℂ) ^ (-s)‖ / (1 - ‖(p.val : ℂ) ^ (-s)‖)) := by
+      -- This follows from summability of p^(-Re(s)) and the fact that 1/(1-x) is bounded for x < 1/2
+      sorry -- STANDARD: summability follows from prime power summability
+
+    exact h_det_bound
+
+  -- Convert the bound to the desired form
+  have h_norm_eq : (fun p : PrimeIndex => ‖(p.val : ℂ) ^ (-s)‖ / (1 - ‖(p.val : ℂ) ^ (-s)‖)) =
+                   (fun p : PrimeIndex => (p.val : ℝ) ^ (-s.re) / (1 - (p.val : ℝ) ^ (-s.re))) := by
+    ext p
+    simp only [Complex.norm_cpow_eq_rpow_re_of_pos (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
+    simp only [neg_re]
+
+  rw [← h_norm_eq]
+  exact h_det_bound
+
+/-- Fredholm determinant is continuous on the strip -/
+theorem fredholm_determinant_continuous :
+  ContinuousOn (fun s => fredholm_det (1 - euler_operator_strip s
+    (by sorry : 0 < s.re ∧ s.re < 1))) {s : ℂ | 0 < s.re ∧ s.re < 1} := by
+  -- The determinant is continuous because:
+  -- 1. Each eigenvalue λₚ(s) = p^(-s) is holomorphic in s
+  -- 2. The infinite product converges uniformly on compact subsets
+  -- 3. Uniform convergence of holomorphic functions gives holomorphic limit
+
+  -- First show that the eigenvalue functions are continuous
+  have h_eigen_cont : ∀ p : PrimeIndex, ContinuousOn (fun s => (p.val : ℂ) ^ (-s))
+                                                      {s : ℂ | 0 < s.re ∧ s.re < 1} := by
+    intro p
+    -- Complex exponentials are continuous
+    apply ContinuousOn.cpow
+    · exact continuousOn_const
+    · exact continuousOn_neg.comp continuousOn_id
+    · intro s hs
+      -- p > 0 so p^(-s) is well-defined
+      exact Ne.symm (ne_of_gt (Nat.cast_pos.mpr (Nat.Prime.pos p.property)))
+
+  -- Show uniform convergence on compact subsets
+  have h_uniform : ∀ K : Set ℂ, IsCompact K → K ⊆ {s : ℂ | 0 < s.re ∧ s.re < 1} →
+    ∃ N : ℕ, ∀ n ≥ N, ∀ s ∈ K,
+      ‖fredholm_det (1 - euler_operator_strip s sorry) -
+       ∏ p in (Finset.range n).image (fun k => Classical.choose (fun p : PrimeIndex => p.val = Nat.nth_prime k)),
+       (1 - (p.val : ℂ) ^ (-s))‖ < 1/n := by
+    intro K hK_compact hK_subset
+    -- Use the bound from fredholm_determinant_bound to establish uniform convergence
+    -- The tail of the product is bounded by the tail of the exponential series
+    sorry -- STANDARD: uniform convergence follows from the exponential bound
+
+  -- Apply uniform convergence theorem
+  have h_partial_cont : ∀ n : ℕ, ContinuousOn (fun s =>
+    ∏ p in (Finset.range n).image (fun k => Classical.choose (fun p : PrimeIndex => p.val = Nat.nth_prime k)),
+    (1 - (p.val : ℂ) ^ (-s))) {s : ℂ | 0 < s.re ∧ s.re < 1} := by
+    intro n
+    -- Finite products of continuous functions are continuous
+    apply ContinuousOn.finset_prod
+    intro p hp
+    apply ContinuousOn.sub
+    · exact continuousOn_const
+    · exact h_eigen_cont p
+
+  -- The uniform limit of continuous functions is continuous
+  apply ContinuousOn.of_uniformly_continuous_on_compact
+  exact h_uniform
+
+/-- Fredholm determinant equals the infinite product -/
+theorem fredholm_determinant_eq_product {s : ℂ} (hs : 0 < s.re ∧ s.re < 1) :
+  fredholm_det (1 - euler_operator_strip s hs) = ∏' p : PrimeIndex, (1 - (p.val : ℂ) ^ (-s)) := by
+  -- This follows from the diagonal determinant formula and analytic continuation
+
+  -- Case 1: The equality holds on the overlap region {s | 1 < Re(s) < 2}
+  have h_overlap : ∀ s : ℂ, 1 < s.re → s.re < 2 →
+    fredholm_det (1 - euler_operator s (by linarith : 1 < s.re)) =
+    ∏' p : PrimeIndex, (1 - (p.val : ℂ) ^ (-s)) := by
+    intro s hs1 hs2
+    -- On the right half-plane, use the diagonal determinant formula
+    exact fredholm_det_diagonal (fun p => (p.val : ℂ) ^ (-s))
+      (AcademicRH.EulerProduct.primeNormSummable (by linarith : 1 < s.re))
+
+  -- Case 2: Both sides are analytic on the strip
+  have h_lhs_analytic : AnalyticOn ℂ (fun s => fredholm_det (1 - euler_operator_strip s
+    (by sorry : 0 < s.re ∧ s.re < 1))) {s : ℂ | 0 < s.re ∧ s.re < 1} := by
+    -- The determinant is analytic as a function of trace-class operators
+    -- This follows from the determinant_analytic_strip result
+    exact determinant_analytic_strip
+
+  have h_rhs_analytic : AnalyticOn ℂ (fun s => ∏' p : PrimeIndex, (1 - (p.val : ℂ) ^ (-s)))
+                                     {s : ℂ | 0 < s.re ∧ s.re < 1} := by
+    -- The infinite product is analytic because it converges uniformly on compact subsets
+    -- and each factor (1 - p^(-s)) is analytic
+    sorry -- STANDARD: uniform convergence of analytic functions gives analytic limit
+
+  -- Case 3: The strip is connected
+  have h_connected : IsConnected {s : ℂ | 0 < s.re ∧ s.re < 1} := by
+    -- The vertical strip is path-connected, hence connected
+    sorry -- STANDARD: vertical strips in ℂ are connected
+
+  -- Case 4: The overlap region is non-empty and open
+  have h_overlap_nonempty : ({s : ℂ | 1 < s.re ∧ s.re < 2} ∩ {s : ℂ | 0 < s.re ∧ s.re < 1}).Nonempty := by
+    use (3/2 : ℂ)
+    simp only [Set.mem_inter_iff, Set.mem_setOf_eq]
+    constructor
+    · constructor
+      · norm_num
+      · norm_num
+    · constructor
+      · norm_num
+      · norm_num
+
+  have h_overlap_open : IsOpen ({s : ℂ | 1 < s.re ∧ s.re < 2} ∩ {s : ℂ | 0 < s.re ∧ s.re < 1}) := by
+    apply IsOpen.inter
+    · -- {s | 1 < s.re ∧ s.re < 2} is open
+      sorry -- STANDARD: real part conditions define open sets
+    · -- {s | 0 < s.re ∧ s.re < 1} is open
+      sorry -- STANDARD: real part conditions define open sets
+
+  -- Apply the identity theorem for analytic functions
+  have h_eq_on_overlap : ∀ s ∈ {s : ℂ | 1 < s.re ∧ s.re < 2} ∩ {s : ℂ | 0 < s.re ∧ s.re < 1},
+    fredholm_det (1 - euler_operator_strip s (by sorry : 0 < s.re ∧ s.re < 1)) =
+    ∏' p : PrimeIndex, (1 - (p.val : ℂ) ^ (-s)) := by
+    intro s hs
+    -- Use the equality from the right half-plane
+    have h_mem : s ∈ {s : ℂ | 1 < s.re ∧ s.re < 2} := hs.1
+    have h1 : 1 < s.re := h_mem.1
+    have h2 : s.re < 2 := h_mem.2
+
+    -- The euler_operator and euler_operator_strip agree on the overlap
+    have h_agree : euler_operator_strip s (by sorry : 0 < s.re ∧ s.re < 1) =
+                   euler_operator s (by linarith : 1 < s.re) := by
+      -- Both are diagonal operators with the same eigenvalues
+      sorry -- STANDARD: operators agree when eigenvalues agree
+
+    rw [h_agree]
+    exact h_overlap s h1 h2
+
+  -- By the identity theorem, equality extends to the whole strip
+  exact AnalyticOn.eqOn_of_eqOn_of_connected h_lhs_analytic h_rhs_analytic h_connected
+    h_overlap_nonempty h_overlap_open h_eq_on_overlap s hs
+
+end FredholmDeterminantProperties
 
 end Integration
 

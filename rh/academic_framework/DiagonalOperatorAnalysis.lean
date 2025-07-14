@@ -548,4 +548,86 @@ theorem evolution_operator_difference_bound {s₁ s₂ : ℂ}
   sorry -- STANDARD FACT: Complex mean value theorem for holomorphic functions
 -/
 
+/-- Norm bound theorem: If all eigenvalues have norm ≤ 1, then the operator norm ≤ 1 -/
+theorem norm_le_one_of_norm_eigenvalue_bound {I : Type*} [DecidableEq I] [Countable I]
+  (μ : I → ℂ) (h : ∀ i, ‖μ i‖ ≤ 1) :
+  ‖DiagonalOperator' μ‖ ≤ 1 := by
+  -- For diagonal operators, the norm is the supremum of eigenvalue norms
+  -- If all eigenvalues have norm ≤ 1, then the supremum is ≤ 1
+
+  -- First, establish the norm formula
+  have h_norm : ‖DiagonalOperator' μ‖ = ⨆ i, ‖μ i‖ := by
+    -- This requires that the eigenvalues are bounded
+    have h_bdd : BddAbove (Set.range fun i ↦ ‖μ i‖) := by
+      use 1
+      intro x hx
+      obtain ⟨i, hi⟩ := hx
+      rw [←hi]
+      exact h i
+    exact diagonal_operator_norm' μ h_bdd
+
+  rw [h_norm]
+
+  -- Now show that the supremum of eigenvalue norms is ≤ 1
+  apply iSup_le
+  exact h
+
+/-- Norm squared equality for diagonal operators -/
+theorem norm_squared_equality {I : Type*} [DecidableEq I] [Countable I]
+  (μ : I → ℂ) (h : Summable fun i ↦ ‖μ i‖^2) :
+  ‖DiagonalOperator' μ‖^2 = ⨆ i, ‖μ i‖^2 := by
+  -- For diagonal operators, the norm squared equals the supremum of eigenvalue norms squared
+
+  -- First, get the norm formula
+  have h_norm : ‖DiagonalOperator' μ‖ = ⨆ i, ‖μ i‖ := by
+    -- This requires that the eigenvalues are bounded
+    have h_bdd : BddAbove (Set.range fun i ↦ ‖μ i‖) := by
+      -- Since the squared norms are summable, the norms must be bounded
+      -- Use the fact that if ∑ ‖μ i‖² < ∞, then ∀ i, ‖μ i‖² ≤ M for some M
+      have h_eventually : ∀ᶠ i in cofinite, ‖μ i‖^2 ≤ 1 := by
+        apply Summable.tendsto_cofinite_zero h
+        simp only [Function.comp_apply]
+        apply eventually_of_forall
+        intro i
+        exact sq_nonneg _
+      -- Extract a bound from the summability
+      obtain ⟨M, hM⟩ := h.bddAbove_range_partial_sum
+      use Real.sqrt M
+      intro x hx
+      obtain ⟨i, hi⟩ := hx
+      rw [←hi]
+      -- Use the fact that ‖μ i‖² appears in the sum
+      have h_le_sum : ‖μ i‖^2 ≤ ∑' j, ‖μ j‖^2 := by
+        apply le_tsum_of_ne_zero
+        · exact h
+        · simp only [sq_nonneg]
+        · simp only [pow_pos_iff, norm_pos_iff, ne_eq]
+          intro h_zero
+          simp [h_zero]
+      -- Therefore ‖μ i‖ ≤ √(∑' j, ‖μ j‖²)
+      exact Real.sqrt_le_sqrt_iff.mp (by simp only [Real.sq_sqrt (norm_nonneg _)]; exact h_le_sum)
+    exact diagonal_operator_norm' μ h_bdd
+
+  -- Now square both sides
+  rw [h_norm]
+
+  -- Use the fact that (⨆ i, ‖μ i‖)² = ⨆ i, ‖μ i‖²
+  -- This follows from the continuity of the square function
+  conv_lhs => rw [← Real.sq_sqrt (iSup_nonneg _)]
+  simp only [Real.sq_sqrt]
+
+  -- Show that ⨆ i, ‖μ i‖² = (⨆ i, ‖μ i‖)²
+  have h_sq_sup : (⨆ i, ‖μ i‖)^2 = ⨆ i, ‖μ i‖^2 := by
+    -- This is a standard result about suprema and monotonic functions
+    have h_mono : Monotone (fun x : ℝ => x^2) := by
+      intro x y h
+      exact sq_le_sq' (neg_le_neg h) h
+    -- For non-negative functions, sup(f²) = (sup f)²
+    have h_nonneg : ∀ i, 0 ≤ ‖μ i‖ := fun i => norm_nonneg _
+    -- Use the fact that x ↦ x² is monotone on [0, ∞)
+    rw [← iSup_comp_le_iff_le_iSup]
+    exact le_refl _
+
+  exact h_sq_sup.symm
+
 end AcademicRH.DiagonalOperator
