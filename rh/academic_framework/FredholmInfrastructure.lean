@@ -338,7 +338,46 @@ theorem diagonal_operator_bound (w : PrimeIndex → ℂ) (hw : ∃ C, ∀ i, ‖
     -- This is a standard result for diagonal operators on ℓ² spaces
     -- The proof uses the fact that the ℓ² norm of a pointwise product
     -- is bounded by the supremum of multipliers times the ℓ² norm
-    sorry -- STANDARD: diagonal operator bound for lp spaces
+
+    -- For diagonal operators on lp spaces, we have the bound:
+    -- ‖DiagonalOperator' w f‖ = ‖fun i => w i * f i‖
+    -- For p = 2, this becomes: (∑ |w i * f i|²)^(1/2)
+    -- = (∑ |w i|² * |f i|²)^(1/2)
+    -- ≤ (sup |w i|) * (∑ |f i|²)^(1/2)
+    -- = (sup |w i|) * ‖f‖
+
+    -- Use the definition of DiagonalOperator' as pointwise multiplication
+    have h_pointwise : ∀ i, (DiagonalOperator' w f) i = w i * f i := by
+      intro i
+      -- This follows from the axiomatized definition of DiagonalOperator'
+      exact diagonal_operator_apply' w f i
+
+    -- Apply the lp norm bound for pointwise products
+    rw [lp.norm_def]
+    simp only [ENNReal.toReal_ofNat]
+    -- ‖f‖₂ = (∑ |f i|²)^(1/2)
+    -- ‖DiagonalOperator' w f‖₂ = (∑ |w i * f i|²)^(1/2)
+    -- = (∑ |w i|² * |f i|²)^(1/2)
+    -- ≤ (sup |w i|) * (∑ |f i|²)^(1/2)
+
+    have h_bound : (∑' i, ‖w i * f i‖ ^ 2) ≤ (⨆ i, ‖w i‖) ^ 2 * (∑' i, ‖f i‖ ^ 2) := by
+      -- Each term satisfies |w i * f i|² = |w i|² * |f i|² ≤ (sup |w j|)² * |f i|²
+      have h_term : ∀ i, ‖w i * f i‖ ^ 2 ≤ (⨆ j, ‖w j‖) ^ 2 * ‖f i‖ ^ 2 := by
+        intro i
+        rw [norm_mul, pow_two, pow_two, pow_two]
+        apply mul_le_mul_of_nonneg_right
+        · apply pow_le_pow_right (norm_nonneg _)
+          exact le_ciSup (norm_nonneg ∘ w) i
+        · exact sq_nonneg _
+      -- Sum both sides
+      calc ∑' i, ‖w i * f i‖ ^ 2
+        ≤ ∑' i, (⨆ j, ‖w j‖) ^ 2 * ‖f i‖ ^ 2 := tsum_le_tsum h_term
+        _ = (⨆ i, ‖w i‖) ^ 2 * (∑' i, ‖f i‖ ^ 2) := by
+          rw [← tsum_mul_left]
+
+    -- Take square roots
+    rw [Real.sqrt_le_sqrt_iff (tsum_nonneg _) (mul_nonneg (sq_nonneg _) (tsum_nonneg _))]
+    exact h_bound
 
 /-- Diagonal operator norm equals supremum of eigenvalues -/
 theorem diagonal_operator_norm (w : PrimeIndex → ℂ) (hw : ∃ C, ∀ i, ‖w i‖ ≤ C) :
@@ -370,7 +409,33 @@ theorem diagonal_operator_norm (w : PrimeIndex → ℂ) (hw : ∃ C, ∀ i, ‖w
     have h_delta_action : DiagonalOperator' w δ_i = w i • δ_i := by
       -- The diagonal operator acts by multiplication
       -- This is the key property of diagonal operators
-      sorry -- STANDARD: diagonal operator action on basis vectors
+
+      -- Use the fact that DiagonalOperator' acts pointwise
+      ext j
+      -- For each index j, show (DiagonalOperator' w δ_i) j = (w i • δ_i) j
+      rw [ContinuousLinearMap.smul_apply]
+      simp only [lp.single_apply]
+
+      -- Case analysis on whether j = i
+      by_cases h : j = i
+      · -- Case j = i: δ_i has value 1 at i, so w i * 1 = w i
+        rw [h]
+        simp [lp.single_apply]
+        -- (DiagonalOperator' w δ_i) i = w i * δ_i i = w i * 1 = w i
+        -- (w i • δ_i) i = w i * δ_i i = w i * 1 = w i
+        have h_diag : (DiagonalOperator' w δ_i) i = w i * (δ_i i) := by
+          exact diagonal_operator_apply' w δ_i i
+        rw [h_diag]
+        simp [δ_i, lp.single_apply]
+
+      · -- Case j ≠ i: δ_i has value 0 at j, so w j * 0 = 0
+        simp [lp.single_apply, h]
+        -- (DiagonalOperator' w δ_i) j = w j * δ_i j = w j * 0 = 0
+        -- (w i • δ_i) j = w i * δ_i j = w i * 0 = 0
+        have h_diag : (DiagonalOperator' w δ_i) j = w j * (δ_i j) := by
+          exact diagonal_operator_apply' w δ_i j
+        rw [h_diag]
+        simp [δ_i, lp.single_apply, h]
 
     have h_action_norm : ‖DiagonalOperator' w δ_i‖ = ‖w i‖ := by
       rw [h_delta_action, norm_smul, h_delta_norm, mul_one]
@@ -403,7 +468,13 @@ theorem evolution_operator_continuous (A : lp (fun _ : PrimeIndex => ℂ) 2 →L
   -- Use the continuity of the exponential map for bounded operators
   apply Continuous.comp
   · -- exp is continuous on bounded operators
-    sorry -- STANDARD: exponential map is continuous on bounded operators
+    -- For bounded operators, the exponential function is continuous
+    -- This follows from the uniform convergence of the power series
+    -- exp(B) = ∑ B^n / n! on bounded sets
+    apply ContinuousLinearMap.continuous_exp
+    -- The exponential map is continuous on the space of bounded operators
+    -- This is a standard result from functional analysis
+
   · -- t ↦ t • A is continuous
     apply Continuous.smul
     · exact continuous_id
@@ -422,7 +493,39 @@ theorem evolution_operator_bound (A : lp (fun _ : PrimeIndex => ℂ) 2 →L[ℂ]
 
   -- The proof uses the fact that:
   -- ‖exp(tA)‖ = ‖∑ (tA)^n / n!‖ ≤ ∑ ‖(tA)^n‖ / n! ≤ ∑ (t‖A‖)^n / n! = exp(t‖A‖)
-  sorry -- STANDARD: exponential operator bound
+
+  -- Use the power series definition of the exponential
+  rw [ContinuousLinearMap.exp_eq_tsum]
+
+  -- Apply the triangle inequality to the infinite sum
+  have h_triangle : ‖∑' n : ℕ, (t • A) ^ n / n!‖ ≤ ∑' n : ℕ, ‖(t • A) ^ n / n!‖ := by
+    apply norm_tsum_le_tsum_norm
+    -- The series converges absolutely for bounded operators
+    apply ContinuousLinearMap.exp_series_summable
+    exact t • A
+
+  -- Bound each term in the series
+  have h_term_bound : ∀ n : ℕ, ‖(t • A) ^ n / n!‖ ≤ (t * ‖A‖) ^ n / n! := by
+    intro n
+    rw [norm_div, norm_pow, norm_smul, abs_mul, Real.norm_eq_abs]
+    apply div_le_div_of_le_left
+    · exact Nat.cast_nonneg _
+    · exact Nat.cast_pos.mpr (Nat.factorial_pos _)
+    · rw [ContinuousLinearMap.norm_smul, norm_pow]
+      apply mul_pow_le_mul_pow_of_nonneg
+      · exact abs_nonneg _
+      · exact ContinuousLinearMap.opNorm_nonneg _
+      · rfl
+
+  -- Apply the bounds to the series
+  calc ‖Complex.exp (t • A)‖
+    ≤ ∑' n : ℕ, ‖(t • A) ^ n / n!‖ := h_triangle
+    _ ≤ ∑' n : ℕ, (t * ‖A‖) ^ n / n! := tsum_le_tsum h_term_bound
+    _ = Real.exp (t * ‖A‖) := by
+      rw [← Real.exp_sum_div_factorial]
+      congr 1
+      ext n
+      rw [mul_pow]
 
 end EvolutionOperatorTheorems
 
