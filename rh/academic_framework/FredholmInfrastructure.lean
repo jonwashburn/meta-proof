@@ -392,16 +392,44 @@ theorem euler_operator_compact {s : ℂ} (hs : 0 < s.re ∧ s.re < 1) :
   -- Diagonal operator with eigenvalues p^(-s)
   -- Show that eigenvalues tend to 0 as p → ∞
   have h_eigen_decay : Tendsto (fun p : PrimeIndex => ‖(p.val : ℂ)^(-s)‖) atTop (nhds 0) := by
-    -- |p^(-s)| = p^(-Re(s)) and Re(s) > 0 so p^(-Re(s)) → 0 as p → ∞
-    rw [Tendsto_zero_iff_forall_lt]
+    rw [Metric.tendsto_atTop]
     intro ε hε
-    -- Find N such that for p > N, p^(-Re(s)) < ε
     have hσ : 0 < s.re := hs.1
-    obtain ⟨N, hN⟩ := exists_nat_gt (ε ^ (-1 / s.re))
-    use ⟨N, Nat.prime_of_mem_primes (sorry)⟩ -- Need to find large prime
-    intro p hp
-    -- p > N ⇒ p^(-Re(s)) < ε
-    sorry -- Complete with real power bounds
+    -- Find N such that for x > N, x^(-s.re) < ε
+    let N_real := ε ^ (-1 / s.re)
+    obtain ⟨N, hN⟩ := exists_nat_gt N_real
+    -- There exists a prime p ≥ N + 1
+    obtain ⟨M, hM_ge, hM_prime⟩ := Nat.exists_infinite_primes (N + 1)
+    let prime_idx : PrimeIndex := ⟨M, hM_prime⟩
+    use prime_idx
+    intro q hq
+    -- q ≥ prime_idx means q.val ≥ M ≥ N + 1 > N_real
+    have hq_large : (q.val : ℝ) > N_real := by
+      have hM : (M : ℝ) ≥ N + 1 := Nat.cast_le.mpr hM_ge
+      have hq_ge : (q.val : ℝ) ≥ M := by
+        sorry -- Assume order on PrimeIndex implies val increasing; may need adjustment
+      linarith
+    -- Since s.re > 0, x^(-s.re) is decreasing
+    have h_decreasing : Antitone (fun x : ℝ => x ^ (-s.re)) := by
+      apply Real.antitone_rpow_of_neg_exponent
+      exact neg_lt_zero.mpr hσ
+    -- Therefore q.val ^ (-s.re) < (N_real + 1) ^ (-s.re) < ε? Wait, better: since > N_real, and decreasing
+    have h_bound : (q.val : ℝ) ^ (-s.re) < ε := by
+      apply Real.rpow_lt_of_base_gt_one_of_neg_exponent
+      · exact Nat.cast_pos.mpr (Nat.Prime.pos q.property)
+      · exact neg_lt_zero.mpr hσ
+      · exact Real.one_lt_rpow_of_pos_of_lt_one_of_neg (by positivity) (by linarith [hq_large]) (neg_lt_zero.mpr hσ)
+      -- Wait, actually solve: x ^ (-σ) < ε iff x > ε^(-1/σ) since -σ < 0
+      -- Yes, since hq_large: q.val > ε^(-1/s.re), and function decreasing
+      -- But to be precise:
+      calc (q.val : ℝ) ^ (-s.re)
+        < N_real ^ (-s.re) := h_decreasing (le_of_lt hq_large)
+        _ = ε := by
+          rw [Real.rpow_neg (le_of_lt (Real.rpow_pos_of_pos hε _))]
+          rw [Real.rpow_inv_eq_inv_rpow]
+          · simp [N_real]
+          · positivity
+    exact h_bound
   -- Diagonal operators with eigenvalues → 0 are compact
   exact IsCompactOperator.diagonal_of_eigen_to_zero h_eigen_decay
 
@@ -911,7 +939,6 @@ theorem fredholm_determinant_bound {s : ℂ} (hs : 0 < s.re ∧ s.re < 1) :
 
     -- Apply the diagonal determinant formula
     rw [fredholm_det_diagonal (fun p => (p.val : ℂ) ^ (-s))]
-
     -- Use the product-to-sum conversion via logarithms
     have h_log_bound : ∀ p : PrimeIndex,
       ‖Complex.log (1 - (p.val : ℂ) ^ (-s))‖ ≤
@@ -944,68 +971,8 @@ theorem fredholm_determinant_bound {s : ℂ} (hs : 0 < s.re ∧ s.re < 1) :
 
     -- Apply the summability and convergence
     -- The exponential of a sum bounds the product via log-determinant theory
-  -- For eigenvalues λᵢ, we have |det(I - T)| = |∏(1 - λᵢ)| ≤ exp(∑|λᵢ|/(1-|λᵢ|))
-  -- This follows from the elementary inequality |log(1-z)| ≤ 2|z| for |z| < 1/2
-  have h_log_bound : ∀ p : PrimeIndex,
-    let λ := eigenvalue_at_prime (euler_operator_strip s hs) p
-    ‖Complex.log (1 - λ)‖ ≤ 2 * ‖λ‖ := by
-    intro p
-    let λ := eigenvalue_at_prime (euler_operator_strip s hs) p
-    -- For the strip 0 < Re(s) < 1, we have |λ| = p^(-Re(s)) < 1
-    -- So we can apply the logarithm bound
-    have h_small : ‖λ‖ < 1/2 := by
-      -- λ = p^(-s) so |λ| = p^(-Re(s))
-      -- For p ≥ 2 and Re(s) > 0, we have p^(-Re(s)) ≤ 2^(-Re(s)) < 1/2
-      simp only [eigenvalue_at_prime_def] -- assuming this exists
-      exact norm_pow_lt_half_of_strip hs
-    -- Apply the complex logarithm bound
-    exact Complex.norm_log_one_sub_le h_small
-
-  -- Sum the bounds to get the exponential bound
-  have h_sum_bound : ∑' p : PrimeIndex, ‖Complex.log (1 - eigenvalue_at_prime (euler_operator_strip s hs) p)‖ ≤
-    2 * ∑' p : PrimeIndex, ‖eigenvalue_at_prime (euler_operator_strip s hs) p‖ := by
-    apply tsum_le_tsum h_log_bound
-    · exact summable_norm_log_one_sub_eigenvalues hs
-    · exact summable_norm_eigenvalues hs
-
-  -- The exponential bound follows
-  rw [Complex.norm_exp]
-  exact Real.exp_le_exp_of_le (h_sum_bound.trans (summable_eigenvalues_implies_bound hs))
-
-    -- Use summability of the eigenvalues
-    have h_summable : Summable (fun p => ‖(p.val : ℂ) ^ (-s)‖ / (1 - ‖(p.val : ℂ) ^ (-s)‖)) := by
-      -- This follows from summability of p^(-Re(s)) and the fact that 1/(1-x) is bounded for x < 1/2
-      -- Summability follows from prime power summability
-  -- For the critical strip 0 < Re(s) < 1, we need to show that
-  -- ∑ p^(-Re(s)) is summable, which is true for Re(s) > 0
-  have h_prime_sum : Summable (fun p : PrimeIndex => ‖eigenvalue_at_prime (euler_operator_strip s hs) p‖) := by
-    -- The eigenvalues are p^(-s), so |p^(-s)| = p^(-Re(s))
-    -- The sum ∑ p^(-σ) converges for σ > 0
-    have h_pos : 0 < s.re := hs.1
-    -- Use the fact that the sum of p^(-σ) over primes is summable for σ > 0
-    -- This follows from the prime number theorem and standard results in analytic number theory
-    apply Summable.of_norm_bounded_eventually_Summable
-    · use fun p => (p.val : ℝ)^(-s.re)
-    · -- Show that the real sum is summable
-      have h_real_sum : Summable (fun p : PrimeIndex => (p.val : ℝ)^(-s.re)) := by
-        -- This is summable since s.re > 0 and we're summing over primes
-        -- The convergence follows from the fact that there are roughly x/log x primes up to x
-        apply Summable.of_nonneg_of_le
-        · intro p
-          exact Real.rpow_nonneg (Nat.cast_nonneg _) _
-        · intro p
-          -- For large primes, this is eventually bounded by the convergent series
-          exact Real.rpow_le_rpow_of_exponent_le (Nat.cast_pos.mpr (Nat.Prime.pos p.property)) (neg_le_neg h_pos)
-        · -- The reference sum is convergent
-          exact summable_prime_reciprocals h_pos
-      exact h_real_sum
-    · -- Show the norm bound
-      intro p
-      simp only [eigenvalue_at_prime_def]
-      exact norm_cpow_le_real_rpow (Nat.cast_pos.mpr (Nat.Prime.pos p.property)) _
-  exact h_prime_sum
-
-    exact h_det_bound
+    rw [Complex.norm_exp]
+    exact Real.exp_le_exp_of_le (tsum_le_tsum h_log_bound (summable_norm_log_one_sub_eigenvalues hs) (summable_norm_eigenvalues hs))
 
   -- Convert the bound to the desired form
   have h_norm_eq : (fun p : PrimeIndex => ‖(p.val : ℂ) ^ (-s)‖ / (1 - ‖(p.val : ℂ) ^ (-s)‖)) =
