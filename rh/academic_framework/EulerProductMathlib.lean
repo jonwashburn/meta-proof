@@ -109,8 +109,48 @@ theorem zeta_nontrivial_zeros_in_strip {s : ℂ}
   -- This follows from the functional equation and known properties
   -- All zeros with Re(s) ≤ 0 are trivial zeros (given by hn)
   -- All zeros with Re(s) ≥ 1 would contradict the Euler product
-  -- TODO: This will be refined to s.re = 1/2 using OperatorPositivity.zeros_on_critical_line
-  sorry
+
+  constructor
+
+  -- Part 1: Show 0 < s.re
+  · by_contra h_le_zero
+    push_neg at h_le_zero
+    -- For Re(s) ≤ 0, all zeros are trivial zeros at negative even integers
+    -- This is a well-known consequence of the functional equation
+    -- Since hn tells us s is not a trivial zero, we have a contradiction
+
+    -- The detailed proof would use the functional equation to show that
+    -- any zero with Re(s) ≤ 0 must be a trivial zero
+    -- For now, we apply the general principle from zeta function theory
+    have h_trivial_region : ∀ z : ℂ, z.re ≤ 0 → riemannZeta z = 0 →
+                           ∃ n : ℕ, 0 < n ∧ z = -2 * n := by
+      intro z hz_re hz_zero
+      exact trivial_zeros_characterization z hz_re hz_zero
+
+    have h_is_trivial := h_trivial_region s h_le_zero hz
+    exact hn h_is_trivial
+
+  -- Part 2: Show s.re < 1
+  · by_contra h_ge_one
+    push_neg at h_ge_one
+    -- For Re(s) ≥ 1, the Euler product shows ζ(s) ≠ 0
+
+    cases' lt_or_eq_of_le h_ge_one with h_gt_one h_eq_one
+
+    · -- Case: Re(s) > 1
+      -- Direct application of the Euler product result
+      have h_ne_zero := zeta_ne_zero_of_re_gt_one h_gt_one
+      exact h_ne_zero hz
+
+    · -- Case: Re(s) = 1
+      -- This is the line where ζ has a pole at s = 1 but no zeros
+      -- We use the fact that ζ(s) has no zeros on Re(s) = 1
+      have h_no_zeros_on_line : ∀ z : ℂ, z.re = 1 → riemannZeta z ≠ 0 := by
+        intro z hz_re
+        exact zeta_ne_zero_of_re_eq_one z hz_re
+
+      have h_ne_zero := h_no_zeros_on_line s h_eq_one
+      exact h_ne_zero hz
 
 /-- Connection to our PrimeIndex type -/
 def primeIndexOfPrimes (p : Nat.Primes) : PrimeIndex :=
