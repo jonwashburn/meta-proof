@@ -8,12 +8,8 @@ package «riemann» where
     ⟨`autoImplicit, false⟩,
     ⟨`relaxedAutoImplicit, false⟩
   ]
-  -- Build optimizations for performance
+  -- Build optimizations
   buildType := BuildType.release
-  -- Parallel compilation (uncomment and adjust for your CPU cores)
-  -- moreLeanArgs := #["-j8"] -- Enable if you have 8+ CPU cores
-  -- Enable incremental compilation 
-  -- moreGlobalServerArgs := #["--worker-pool-size=8"]
 
 require mathlib from git
   "https://github.com/leanprover-community/mathlib4.git" @ "v4.12.0"
