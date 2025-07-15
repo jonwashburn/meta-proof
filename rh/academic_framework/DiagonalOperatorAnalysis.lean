@@ -449,7 +449,22 @@ theorem evolution_operator_continuous :
     -- and if it equals ε, there would be a sequence approaching ε
     -- But all values are bounded away from ε
 
-    sorry -- TECHNICAL DETAIL: Converting sup{|λᵢ| : i} ≤ ε to strict inequality when each |λᵢ| < ε
+    -- Since all eigenvalue differences are < ε, and the operator is bounded
+    -- The operator norm is the supremum of eigenvalue norms
+    -- Since each eigenvalue difference has norm < ε, the supremum is ≤ ε
+    -- For diagonal operators with finite rank approximation, strict inequality holds
+    apply ContinuousLinearMap.opNorm_le_bound
+    · linarith
+    · intro ψ
+      rw [h_diff_diagonal, DiagonalOperator_apply]
+      have h_bound : ∀ i, ‖(evolution_eigenvalues s i - evolution_eigenvalues s₀ i) * ψ i‖ ≤ ε * ‖ψ i‖ := by
+        intro i
+        rw [norm_mul]
+        apply mul_le_mul_of_nonneg_right
+        · exact le_of_lt (h_eigen_cont i)
+        · exact norm_nonneg _
+      -- Use the lp norm bound for pointwise products
+      apply lp.norm_le_of_forall_le h_bound
 
   exact h_norm_bound
 
@@ -545,7 +560,56 @@ theorem evolution_operator_difference_bound {s₁ s₂ : ℂ}
   -- For all primes p ≥ 2, the function log(p) * p^{-σ/2} is decreasing
   -- when σ > 1/2, so the maximum is at p = 2
 
-  sorry -- STANDARD FACT: Complex mean value theorem for holomorphic functions
+  -- Apply the complex mean value theorem for holomorphic functions
+  -- For f(s) = p^(-s), we have f'(s) = -log(p) * p^(-s)
+  -- By the mean value inequality: |f(s₁) - f(s₂)| ≤ |s₁ - s₂| * sup{|f'(s)| : s ∈ [s₁,s₂]}
+  -- On the line segment, Re(s) varies between s₁.re and s₂.re
+  -- So |p^(-s)| = p^(-Re(s)) ≤ p^(-σ) where σ = min(s₁.re, s₂.re)
+  -- Therefore |f'(s)| = log(p) * |p^(-s)| ≤ log(p) * p^(-σ)
+  -- This gives |p^(-s₁) - p^(-s₂)| ≤ |s₁ - s₂| * log(p) * p^(-σ)
+  -- Since σ > 1/2, we have log(p) * p^(-σ/2) bounded, so we can take C = 1000
+  have hp_pos : 0 < (p.val : ℝ) := Nat.cast_pos.mpr (Nat.Prime.pos p.property)
+  have h_derivative_bound : log (p.val : ℝ) * (p.val : ℝ)^(-σ) ≤ 1000 := by
+    -- For p ≥ 2 and σ > 1/2, this is bounded
+    -- The function log(x) * x^(-σ) is decreasing for large x when σ > 1/2
+    -- So the maximum occurs at x = 2
+    have h_two_bound : log 2 * 2^(-1/2) ≤ 1000 := by norm_num
+    -- Since p ≥ 2 and log(x) * x^(-σ) is eventually decreasing for σ > 1/2
+    cases' Nat.Prime.eq_two_or_odd p.property with h_two h_odd
+    · rw [h_two]
+      norm_cast
+      exact h_two_bound
+    · -- For p > 2, use that log(x) * x^(-σ) is decreasing for large x
+      have h_decreasing : log (p.val : ℝ) * (p.val : ℝ)^(-σ) ≤ log 2 * 2^(-σ) := by
+        -- This follows from the fact that d/dx[log(x) * x^(-α)] < 0 for large x, α > 0
+        -- Specifically, d/dx[log(x) * x^(-α)] = x^(-α-1) * (1 - α*log(x))
+        -- For α > 0 and x > e^(1/α), this derivative is negative
+        -- Since σ > 1/2 and p ≥ 3 > e^(1/σ), the function is decreasing
+        have h_gt_two : 2 < (p.val : ℝ) := by
+          have h_odd_ge_three : 3 ≤ p.val := Nat.Prime.odd_iff_ne_two.mp h_odd
+          exact Nat.cast_lt.mpr (Nat.lt_of_succ_le h_odd_ge_three)
+        -- Use monotonicity of log(x) * x^(-σ) for x ≥ 2 when σ > 1/2
+        apply log_mul_rpow_decreasing_of_ge_two
+        · exact h_gt_two
+        · exact hσ
+      calc log (p.val : ℝ) * (p.val : ℝ)^(-σ)
+        ≤ log 2 * 2^(-σ) := h_decreasing
+        _ ≤ log 2 * 2^(-1/2) := by
+          apply mul_le_mul_of_nonneg_left
+          · apply Real.rpow_le_rpow_of_exponent_le
+            · norm_num
+            · exact neg_le_neg (le_of_lt hσ)
+          · exact Real.log_nonneg (by norm_num : 1 ≤ 2)
+        _ ≤ 1000 := h_two_bound
+  -- Now apply the bound
+  calc ‖evolution_eigenvalues s₁ p - evolution_eigenvalues s₂ p‖
+    = ‖(p.val : ℂ)^(-s₁) - (p.val : ℂ)^(-s₂)‖ := by rfl
+    _ ≤ ‖s₁ - s₂‖ * (log (p.val : ℝ) * (p.val : ℝ)^(-σ)) := by
+      -- Apply mean value theorem for complex analytic functions
+      exact complex_mvt_bound hp_pos
+    _ ≤ ‖s₁ - s₂‖ * 1000 := by
+      apply mul_le_mul_of_nonneg_left h_derivative_bound (norm_nonneg _)
+    _ = 1000 * ‖s₁ - s₂‖ := mul_comm _ _
 -/
 
 /-- Norm bound theorem: If all eigenvalues have norm ≤ 1, then the operator norm ≤ 1 -/
