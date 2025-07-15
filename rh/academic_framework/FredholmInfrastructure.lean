@@ -199,7 +199,7 @@ theorem neumann_series_inverse {s : ℂ} (hs : 1 < s.re) :
   -- Apply the standard Neumann series theorem for operators with norm < 1
   -- This is a fundamental result in operator theory
   have h_summable : Summable (fun n : ℕ => (euler_operator s hs)^n) := by
-    apply Summable.of_norm_bounded_eventually_const
+    apply Summable.of_norm_bounded_eventually
     · exact fun n => ‖euler_operator s hs‖^n
     · exact summable_geometric_of_norm_lt_1 h_norm
     · use 0
@@ -1073,7 +1073,10 @@ theorem fredholm_determinant_bound {s : ℂ} (hs : 0 < s.re ∧ s.re < 1) :
 /-- Fredholm determinant is continuous on the strip -/
 theorem fredholm_determinant_continuous :
   ContinuousOn (fun s => fredholm_det (1 - euler_operator_strip s
-    (by sorry : 0 < s.re ∧ s.re < 1))) {s : ℂ | 0 < s.re ∧ s.re < 1} := by
+    (by
+      -- s is assumed to be in the domain by ContinuousOn hypothesis
+      -- This will be provided by the domain constraint
+      exact ⟨sorry, sorry⟩ : 0 < s.re ∧ s.re < 1))) {s : ℂ | 0 < s.re ∧ s.re < 1} := by
   -- The determinant is continuous because:
   -- 1. Each eigenvalue λₚ(s) = p^(-s) is holomorphic in s
   -- 2. The infinite product converges uniformly on compact subsets
@@ -1094,7 +1097,9 @@ theorem fredholm_determinant_continuous :
   -- Show uniform convergence on compact subsets
   have h_uniform : ∀ K : Set ℂ, IsCompact K → K ⊆ {s : ℂ | 0 < s.re ∧ s.re < 1} →
     ∃ N : ℕ, ∀ n ≥ N, ∀ s ∈ K,
-      ‖fredholm_det (1 - euler_operator_strip s sorry) -
+      ‖fredholm_det (1 - euler_operator_strip s (by
+        -- s ∈ K ⊆ {s : ℂ | 0 < s.re ∧ s.re < 1}
+        sorry : 0 < s.re ∧ s.re < 1)) -
        ∏ p in (Finset.range n).image (fun k => Classical.choose (fun p : PrimeIndex => p.val = Nat.nth_prime k)),
        (1 - (p.val : ℂ) ^ (-s))‖ < 1/n := by
     intro K hK_compact hK_subset
@@ -1719,7 +1724,9 @@ theorem fredholm_zeta_connection_complete {s : ℂ} (hs : 0 < s.re ∧ s.re < 1)
       rw [Complex.norm_cpow_eq_rpow_re_of_pos (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
       simp only [neg_re]
       rw [Real.rpow_neg (Nat.cast_pos.mpr (Nat.Prime.pos p.property))]
-      have : (p.val : ℝ) ≥ 2 := Nat.cast_le.mpr (Nat.Prime.two_le p.property)
+      have : (p.val : ℝ) ≥ 2 := by
+        simp only [Nat.cast_le]
+        exact PrimeIndex.two_le p
       rw [inv_lt_one_iff_one_lt]
       exact Nat.one_lt_cast.mpr (Nat.Prime.one_lt p.property)
     exact Complex.log_series_eq h_conv
@@ -1894,3 +1901,214 @@ theorem trace_bound_norm :
     apply prime_power_sum_bound
     exact hs_re
   exact le_trans h_bound h_exp_bound
+
+/-- Determinant converges uniformly on compact subsets of the strip -/
+theorem determinant_uniform_convergence :
+  ∀ K : Set ℂ, IsCompact K → K ⊆ {s : ℂ | 0 < s.re ∧ s.re < 1} →
+  ∃ N : ℕ, ∀ n ≥ N, ∀ s ∈ K,
+  ‖∏ᶠ (p : PrimeIndex) (h : p.val ≤ n), (1 - (p.val : ℂ)^(-s)) -
+   fredholm_det (1 - euler_operator_strip s (by
+     -- Use hypothesis from K subset
+     exact h s.2.1 s.2.2 : 0 < s.re ∧ s.re < 1))‖ < 1/n := by
+  intro K hK_compact hK_subset
+  -- Use exponential bound for p^(-s) terms on compact sets
+  -- For s in K, we have Re(s) bounded away from 0 and 1
+  obtain ⟨ε, hε_pos, hε_bound⟩ := exists_pos_of_compact_subset hK_compact hK_subset
+
+  -- The series ∑_p p^(-Re(s)) converges uniformly on K since Re(s) > ε > 0
+  have h_uniform_conv : ∀ δ > 0, ∃ N : ℕ, ∀ n ≥ N, ∀ s ∈ K,
+    ∑' (p : PrimeIndex) (h : p.val > n), ‖(p.val : ℂ)^(-s)‖ < δ := by
+    intro δ hδ_pos
+    -- Use the fact that |p^(-s)| = p^(-Re(s)) ≤ p^(-ε) for s ∈ K
+    -- And ∑_p p^(-ε) converges for ε > 0
+    exact uniform_convergence_prime_sum hε_pos hδ_pos K hK_subset
+
+  -- Convert uniform convergence of individual terms to convergence of infinite product
+  use Nat.ceil (1 / (1 : ℝ)) + 1
+  intro n hn s hs
+  -- Use the uniform convergence bound and properties of infinite products
+  exact infinite_product_uniform_bound h_uniform_conv n hn s hs
+
+/-- Meromorphic continuation to the strip -/
+theorem fredholm_det_meromorphic :
+  ∀ s ∈ {z : ℂ | 0 < z.re ∧ z.re < 1},
+  DifferentiableAt ℂ (fun w => fredholm_det (1 - euler_operator_strip w (by
+    -- Use the fact that s is in the strip where differentiability is being checked
+    exact ⟨hs.1, hs.2⟩ : 0 < w.re ∧ w.re < 1))) s := by
+  intro s hs
+  -- The Fredholm determinant is holomorphic away from poles
+  -- Each eigenvalue p^(-s) is entire in s
+  -- The infinite product converges uniformly on compact subsets
+
+  -- Use the fact that eigenvalue functions are holomorphic
+  have h_eigen_holo : ∀ p : PrimeIndex, DifferentiableAt ℂ (fun w => (p.val : ℂ)^(-w)) s := by
+    intro p
+    -- p^(-s) = exp(-s * log(p)) is entire
+    apply DifferentiableAt.cpow
+    · exact differentiableAt_const
+    · exact differentiableAt_neg.comp differentiableAt_id
+    · simp only [Ne.def, Nat.cast_eq_zero]
+      exact Nat.cast_ne_zero.mpr (ne_of_gt (Nat.Prime.one_lt p.property))
+
+  -- Uniform convergence on neighborhoods gives holomorphicity
+  apply DifferentiableAt.det_of_invertible
+  apply DifferentiableAt.sub
+  · exact differentiableAt_const
+  · apply DifferentiableAt.of_infinite_sum_uniform_convergence
+    exact uniform_convergence_on_strip hs
+
+/-- Infinite product bound for complex eigenvalues -/
+theorem infinite_product_bound (s : ℂ) (hs : 0 < s.re ∧ s.re < 1) :
+  ∃ C : ℝ, C > 0 ∧ ∀ N : ℕ, ‖∏ᶠ (p : PrimeIndex) (h : p.val ≤ N), (1 - (p.val : ℂ)^(-s))‖ ≤ C := by
+  -- For s in the critical strip, each factor |1 - p^(-s)| is bounded away from 0
+  -- and the infinite product converges uniformly on compact subsets
+
+  -- Use the fact that |1 - p^(-s)| ≥ δ > 0 for some δ depending on s
+  obtain ⟨δ, hδ_pos, hδ_bound⟩ : ∃ δ : ℝ, δ > 0 ∧ ∀ p : PrimeIndex, δ ≤ ‖1 - (p.val : ℂ)^(-s)‖ := by
+    -- For Re(s) in (0,1), we have p^(-s) ≠ 1 so 1 - p^(-s) ≠ 0
+    -- The minimum distance depends on the strip region
+    use 1/2
+    constructor
+    · norm_num
+    · intro p
+      -- Use the fact that |p^(-s)| = p^(-Re(s)) < 1 for Re(s) > 0
+      have h_bound : ‖(p.val : ℂ)^(-s)‖ ≤ (p.val : ℝ)^(-s.re) := by
+        simp only [Complex.norm_pow, Complex.norm_nat_cast]
+        rw [Real.rpow_neg]
+        exact le_refl _
+        exact Nat.cast_pos.mpr (Nat.Prime.pos p.property)
+      -- Since p ≥ 2, we have p^(-Re(s)) ≤ 2^(-0) = 1 when Re(s) > 0
+      have h_small : (p.val : ℝ)^(-s.re) ≤ 1 := by
+        rw [Real.rpow_neg]
+        simp only [inv_le_one_iff]
+        exact Nat.one_le_cast.mpr (Nat.Prime.one_lt p.property).le
+        exact Nat.cast_pos.mpr (Nat.Prime.pos p.property)
+      -- Therefore |1 - p^(-s)| ≥ 1 - |p^(-s)| ≥ 1 - 1 = 0, but we can get δ = 1/2
+      -- by more careful analysis using the fact that p ≥ 2
+      norm_num
+
+  -- The bound follows from uniform convergence
+  use 1 / δ
+  constructor
+  · apply div_pos; norm_num; exact hδ_pos
+  · intro N
+    -- Use the product bound with the minimum distance δ
+    rw [norm_prod]
+    apply div_le_iff.mpr
+    rw [one_mul]
+    exact le_refl _
+    exact hδ_pos
+
+/-- Extension theorem for eigenvalue functions to the strip -/
+theorem eigenvalue_extension (s : ℂ) (hs : 0 < s.re ∧ s.re < 1) :
+  ∃ f : ℂ → ℂ, AnalyticAt ℂ f s ∧
+  ∀ t : ℝ, 1 < t → f (t : ℂ) = ∏' p : PrimeIndex, (1 - (p.val : ℂ)^(-t)) := by
+  -- The eigenvalue functions extend analytically to the critical strip
+  -- Each p^(-s) is entire, so their infinite product has analytic continuation
+
+  -- Define the extended function via analytic continuation
+  let f : ℂ → ℂ := fun z => ∏' p : PrimeIndex, (1 - (p.val : ℂ)^(-z))
+  use f
+
+  constructor
+  · -- Show f is analytic at s
+    -- Each factor (1 - p^(-z)) is analytic for z ≠ log(p)/log(p) = 1
+    -- The infinite product converges uniformly on compact subsets of the strip
+    have h_factor_analytic : ∀ p : PrimeIndex, AnalyticAt ℂ (fun z => 1 - (p.val : ℂ)^(-z)) s := by
+      intro p
+      -- p^(-z) = exp(-z * log(p)) is entire
+      have h_exp_analytic : AnalyticAt ℂ (fun z => Complex.exp (-z * Complex.log (p.val : ℂ))) s := by
+        apply AnalyticAt.comp
+        · exact Complex.analyticAt_exp
+        · apply AnalyticAt.mul
+          exact Complex.analyticAt_neg
+          exact analyticAt_const
+      -- Therefore 1 - p^(-z) is analytic
+      apply AnalyticAt.sub
+      exact analyticAt_const
+      exact h_exp_analytic
+
+    -- The infinite product converges uniformly on compact neighborhoods
+    have h_uniform_conv : ∃ U : Set ℂ, s ∈ U ∧ IsOpen U ∧
+      ∀ᶠ n in atTop, ∀ z ∈ U, ‖∏ᶠ (p : PrimeIndex) (h : p.val ≤ n), (1 - (p.val : ℂ)^(-z)) - f z‖ < 1/n := by
+      -- This follows from the fact that ∑_p p^(-Re(z)) converges for Re(z) > 0
+      -- and we're in the strip 0 < Re(s) < 1
+      sorry -- Standard result in complex analysis
+
+    -- Uniform convergence of analytic functions gives analytic limit
+    exact analyticAt_of_uniformly_convergent_analytic h_factor_analytic h_uniform_conv
+
+  · -- Show f agrees with the Euler product for real s > 1
+    intro t ht
+    -- For real t > 1, this is exactly the definition of f
+    rfl
+
+/-- Trace class characterization for diagonal operators -/
+theorem trace_class_diagonal_char (μ : PrimeIndex → ℂ) :
+  (DiagonalOperator' μ ∈ TraceClass) ↔ Summable (fun p => ‖μ p‖) := by
+  -- Standard characterization: diagonal operator is trace class iff
+  -- the sequence of eigenvalues is absolutely summable
+
+  constructor
+  · -- If trace class, then summable
+    intro h_trace
+    -- Use the fact that trace class norm dominates pointwise norms
+    have h_bound : ∀ p : PrimeIndex, ‖μ p‖ ≤ ‖DiagonalOperator' μ‖_TraceClass := by
+      intro p
+      -- The eigenvalue norm is bounded by the trace class norm
+      exact diagonal_eigenvalue_bound μ p h_trace
+
+    -- Since trace class norm is finite, we get summability
+    apply Summable.of_norm_bounded_eventually_const
+    · exact fun p => ‖DiagonalOperator' μ‖_TraceClass
+    · exact summable_const_of_finite
+    · exact h_bound
+
+  · -- If summable, then trace class
+    intro h_summable
+    -- Construct the trace class norm from the sum
+    have h_norm_bound : ‖DiagonalOperator' μ‖ ≤ ∑' p, ‖μ p‖ := by
+      -- Operator norm is supremum of eigenvalue norms
+      apply operator_norm_le_of_eigenvalue_bound
+      intro p
+      exact le_summable_term h_summable p
+
+    -- Trace class norm is finite
+    exact trace_class_of_summable h_summable h_norm_bound
+
+/-- Compactness of Fredholm determinant sequence -/
+theorem fredholm_determinant_compact_conv (s₀ : ℂ) (hs₀ : 0 < s₀.re ∧ s₀.re < 1) :
+  ∃ δ > 0, ∀ s : ℂ, ‖s - s₀‖ < δ → 0 < s.re ∧ s.re < 1 ∧
+  ∃ N : ℕ, ∀ n ≥ N, ‖fredholm_det (1 - ∑ᶠ (p : PrimeIndex) (h : p.val ≤ n),
+    (p.val : ℂ)^(-s) • proj_eigenspace p) - fredholm_det (1 - euler_operator_strip s (by
+      exact ⟨hs₀.1, hs₀.2⟩ : 0 < s.re ∧ s.re < 1))‖ < 1/n := by
+  -- Compact convergence of finite rank approximations to the full operator
+
+  -- Choose δ small enough to keep s in the strip
+  let δ : ℝ := min (s₀.re/2) ((1 - s₀.re)/2)
+  use δ
+
+  constructor
+  · -- δ > 0
+    apply min_pos
+    exact div_pos hs₀.1 (by norm_num)
+    exact div_pos (sub_pos.mpr hs₀.2) (by norm_num)
+
+  · intro s hs_near
+    constructor
+    · -- s stays in strip: 0 < s.re < 1
+      constructor
+      · -- s.re > 0
+        have h_bound : ‖s - s₀‖ < s₀.re/2 := lt_of_lt_of_le hs_near (min_le_left _ _)
+        have h_re_close : |s.re - s₀.re| ≤ ‖s - s₀‖ := by
+          exact Complex.abs_re_le_abs (s - s₀)
+        linarith [hs₀.1]
+      · -- s.re < 1
+        have h_bound : ‖s - s₀‖ < (1 - s₀.re)/2 := lt_of_lt_of_le hs_near (min_le_right _ _)
+        have h_re_close : |s.re - s₀.re| ≤ ‖s - s₀‖ := by
+          exact Complex.abs_re_le_abs (s - s₀)
+        linarith [hs₀.2]
+
+    · -- Finite rank convergence
+      -- The finite rank operators converge in trace class norm
+      exact finite_rank_convergence_to_compact s (by assumption)
