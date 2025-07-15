@@ -8,6 +8,8 @@ package «riemann» where
     ⟨`autoImplicit, false⟩,
     ⟨`relaxedAutoImplicit, false⟩
   ]
+  -- Build optimizations
+  buildType := BuildType.release
 
 require mathlib from git
   "https://github.com/leanprover-community/mathlib4.git" @ "v4.12.0"

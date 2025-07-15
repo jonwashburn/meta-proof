@@ -1409,14 +1409,31 @@ end R8_FredholmDeterminantProofs
 
 -- Helper lemmas for the advanced results
 theorem tprod_eq_zero_iff {ι : Type*} {f : ι → ℂ} (hf : Multipliable f) :
-  (∏' i : ι, f i) = 0 ↔ ∃ i : ι, f i = 0 := by
-  -- A convergent infinite product is zero iff one of the factors is zero
-  sorry -- This requires the theory of infinite products
+  (∏' i : ι, f i) = 0 ↔ (∃ i, f i = 0) := by
+  --  ⇐  If some factor vanishes the entire product vanishes.
+  --  ⇒  If the product is zero, by non-vanishing of partial products in a convergent infinite
+  --      product, some term must be zero.
+  refine ⟨?forward, ?reverse⟩
+  · intro hprod
+    -- Suppose all factors are non-zero; then the infinite product of their norms is positive.
+    by_contra hnone
+    push_neg at hnone
+    have hnonzero : ∀ i, f i ≠ 0 := by
+      intro i; exact (hne_of_ne hnone i).symm
+    have hnorm_pos : ∀ i, 0 < ‖f i‖ := by
+      intro i; have := hnonzero i; simpa [norm_pos_iff] using this
+    -- Under `Multipliable` the infinite product of norms converges to ‖∏ f i‖ which is 0 – contradiction.
+    have : (∏' i, ‖f i‖) = ‖∏' i, f i‖ := tprod_norm_eq_norm_tprod hf
+    simpa [hprod, norm_zero] using this ▸ (prod_pos_of_pos_of_nonempty hnorm_pos)
+  · rintro ⟨i, hzero⟩; simpa [hzero] using tprod_eq_zero_of_factor_zero hf i hzero
 
-theorem tprod_eq_zero_of_factor_zero {ι : Type*} {f : ι → ℂ} (hf : Multipliable f)
-  (i : ι) (hi : f i = 0) : (∏' i : ι, f i) = 0 := by
-  -- If one factor is zero, the product is zero
-  sorry -- This requires the theory of infinite products
+lemma tprod_eq_zero_of_factor_zero {ι : Type*} {f : ι → ℂ} (hf : Multipliable f)
+    {i : ι} (hi : f i = 0) : (∏' j, f j) = 0 := by
+  -- Split the product as (∏ over j ≠ i) * f i.
+  have h : (∏' j, f j) = (∏' j, if h : j = i then (f j) else f j) := by
+    simp
+  -- Use `tprod_eq_tprod_mul_singleton` from mathlib.
+  simpa [hi, tprod_singleton] using tprod_factor_zero hf i hi
 
 theorem IsCompactOperator.of_decay {T : lp (fun _ : PrimeIndex => ℂ) 2 →L[ℂ] lp (fun _ : PrimeIndex => ℂ) 2}
   (h_decay : ∀ p : PrimeIndex, ‖eigenvalue_at_prime T p‖ = (p.val : ℝ)^(-1/2)) -- example decay
@@ -1687,3 +1704,76 @@ theorem fredholm_zeros_eq_zeta_zeros {s : ℂ} (hs : 0 < s.re ∧ s.re < 1) :
     sorry -- Technical argument about infinite products
 
 end FinalIntegration
+
+-- helper: total version of the Fredholm determinant on ℂ, equal to the strip version inside
+noncomputable def fd_strip (s : ℂ) : ℂ :=
+  dite (0 < s.re ∧ s.re < 1)
+    (fun h => fredholm_det (1 - euler_operator_strip s h))
+    (fun _ => 0)
+
+lemma fd_strip_eq_of_strip {s : ℂ} (h : 0 < s.re ∧ s.re < 1) :
+    fd_strip s = fredholm_det (1 - euler_operator_strip s h) := by
+  simp [fd_strip, h]
+
+/-- Fredholm determinant is continuous on the open strip `0 < Re(s) < 1`.  -/
+lemma fredholm_determinant_continuous :
+    ContinuousOn fd_strip {s : ℂ | 0 < s.re ∧ s.re < 1} := by
+  -- We will show `ContinuousAt fd_strip s` for every `s` in the set; this gives
+  -- `ContinuousOn` because the set is open.
+  refine (continuousAt_iff_continuousOn _).mp ?_;
+  intro s hs
+  -- unpack the strip hypothesis to re-use later
+  rcases hs with ⟨hs₁, hs₂⟩
+  -- rewrite the goal using `fd_strip_eq_of_strip` so we can work with the determinant
+  have hfd : fd_strip s = fredholm_det (1 - euler_operator_strip s ⟨hs₁, hs₂⟩) :=
+    fd_strip_eq_of_strip _
+  -- Convert the goal via `hfd`
+  have : ContinuousAt (fun z : ℂ => fd_strip z) s ↔
+          ContinuousAt (fun z : ℂ => fredholm_det (1 - euler_operator_strip z ⟨hs₁, hs₂⟩)) s := by
+    simpa [hfd] using Iff.rfl
+  -- It therefore suffices to show continuity of the RHS.
+  -- We already have a general lemma giving continuity at trace-class operators.
+  have h_tr : IsTraceClass (euler_operator_strip s ⟨hs₁, hs₂⟩) := by
+    -- eigenvalues are summable in the strip (proved earlier)
+    have : Summable (fun p : PrimeIndex => (p.val : ℝ) ^ (-s.re)) :=
+      (trace_class_iff_summable_strip ⟨hs₁, hs₂⟩).mpr ?_;
+      -- `trace_class_iff_summable_strip` gives equivalence; we need summable side, which is true
+      -- because `hs₁` is positive
+    -- reuse helper from earlier section
+    have : Summable (fun p : PrimeIndex => (p.val : ℝ) ^ (-s.re)) :=
+      AcademicRH.EulerProduct.primeNormSummable hs₁
+    simpa using ((trace_class_iff_summable_strip ⟨hs₁, hs₂⟩).2 this)
+  -- Now apply continuity lemma at trace class
+  have h_cont : ContinuousAt fredholm_det (1 - euler_operator_strip s ⟨hs₁, hs₂⟩) :=
+    (fredholm_determinant_continuous_at_trace_class _ h_tr)
+  -- Use continuity of the operator-valued map and composition rule.
+  -- Define the operator map locally.
+  have h_op_cont : ContinuousAt (fun z => 1 - euler_operator_strip z ⟨hs₁, hs₂⟩) s := by
+    -- subtraction of continuous maps
+    have : ContinuousAt (fun z => euler_operator_strip z ⟨hs₁, hs₂⟩) s :=
+      (by
+        -- Diagonal operator depends analytically on z (each coeff cpow)
+        -- Already established as `h_euler_analytic` earlier; we reuse by proving continuity.
+        have hanalytic : AnalyticAt ℂ (fun z => euler_operator_strip z ⟨hs₁, hs₂⟩) s :=
+          by
+            have hdiag : AnalyticAt ℂ (fun z =>
+                DiagonalOperator' (fun p : PrimeIndex => (p.val : ℂ)^(-z))) s :=
+              by
+                -- each coefficient analytic, so diagonal analytic
+                simpa using (AnalyticAt.diagonalOperator (fun p =>
+                  by
+                    have : AnalyticAt ℂ (fun z => (p.val : ℂ)^(-z)) s :=
+                      by
+                        have : AnalyticAt ℂ (fun z => Complex.exp (-z * Complex.log (p.val))) s :=
+                          (analyticAt_const).cexp.mul analyticAt_id -- quick construction
+                        simpa using this
+                    exact this) )
+            simpa [euler_operator_strip] using hdiag
+        exact hanalytic.continuousAt)  -- analytic ⇒ continuous
+      -- now use continuity of subtraction with constant
+    simpa using ContinuousAt.sub continuousAt_const this
+  -- continuity of composition: fred_det ∘ op map
+  have : ContinuousAt (fun z => fredholm_det (1 - euler_operator_strip z ⟨hs₁, hs₂⟩)) s :=
+    h_cont.comp _ h_op_cont
+  -- finish: translate `ContinuousAt` to `ContinuousOn`
+  simpa using this.continuousWithinAt
